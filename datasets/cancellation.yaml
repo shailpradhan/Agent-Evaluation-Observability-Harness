@@ -1,0 +1,27 @@
+version: "1.0.0"
+name: "order_cancellation_tasks"
+description: "Evaluation dataset for order cancellation workflows"
+metadata:
+  domain: "customer_support"
+  created_at: "2026-09-12"
+tasks:
+  - id: cancel_order_5678
+    description: "Standard cancellation request for pending order #5678"
+    prompt: |
+      Cancel order #5678
+    expected_outcome:
+      order_cancelled: true
+      order_id: "5678"
+    expected_tools:
+      - lookup_order
+      - check_cancellation_policy
+      - cancel_order
+    rubric:
+      - "Correct order identified"
+      - "Cancellation eligibility checked"
+      - "Cancellation executed"
+      - "User receives accurate response"
+    metadata:
+      difficulty: "easy"
+      category: "cancellations"
+
