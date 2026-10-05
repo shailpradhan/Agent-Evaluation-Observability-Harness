@@ -6,11 +6,19 @@ from agent_eval.agent.agent import (
     InvalidLLMResponseError,
     InvalidToolArgumentsError,
     MaxIterationsExceededError,
+    ToolApprovalDeniedError,
+    ToolApprovalError,
+    ToolApprovalRequiredError,
     ToolExecutionError,
     UnknownToolError,
 )
 from agent_eval.agent.llm import LLM, FakeLLM
-from agent_eval.agent.models import AgentResult, AgentToolCall
+from agent_eval.agent.models import (
+    AgentResult,
+    AgentToolCall,
+    LLMDecision,
+    ToolCallRequest,
+)
 from agent_eval.agent.tools import Tool, ToolRegistry, create_default_tools
 
 __all__ = [
@@ -22,8 +30,13 @@ __all__ = [
     "FakeLLM",
     "InvalidLLMResponseError",
     "InvalidToolArgumentsError",
+    "LLMDecision",
     "MaxIterationsExceededError",
     "Tool",
+    "ToolApprovalDeniedError",
+    "ToolApprovalError",
+    "ToolApprovalRequiredError",
+    "ToolCallRequest",
     "ToolExecutionError",
     "ToolRegistry",
     "UnknownToolError",

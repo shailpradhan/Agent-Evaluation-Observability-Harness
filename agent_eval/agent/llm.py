@@ -7,13 +7,15 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
+from agent_eval.agent.models import LLMDecision, ToolCallRequest
+
 
 class LLM(ABC):
     """Interface implemented by real or simulated language-model providers."""
 
     @abstractmethod
-    def generate(self, messages: list[dict[str, str]]) -> str:
-        """Return a text response for a list of role/content messages."""
+    def generate(self, messages: list[dict[str, str]]) -> LLMDecision:
+        """Return a normalized structured decision for the agent."""
 
 
 class FakeLLM(LLM):
@@ -24,11 +26,11 @@ class FakeLLM(LLM):
     explanation for other tasks.
     """
 
-    def __init__(self, responses: Sequence[str] | None = None) -> None:
+    def __init__(self, responses: Sequence[LLMDecision] | None = None) -> None:
         self._responses = tuple(responses) if responses is not None else None
         self._response_index = 0
 
-    def generate(self, messages: list[dict[str, str]]) -> str:
+    def generate(self, messages: list[dict[str, str]]) -> LLMDecision:
         if self._responses is not None:
             if self._response_index >= len(self._responses):
                 raise RuntimeError("FakeLLM has no scripted responses remaining.")
@@ -93,10 +95,11 @@ class FakeLLM(LLM):
         *,
         tool_call: dict[str, object] | None = None,
         final_response: str | None = None,
-    ) -> str:
-        decision: dict[str, object] = {}
+    ) -> LLMDecision:
         if tool_call is not None:
-            decision["tool_call"] = tool_call
+            return LLMDecision(
+                tool_call=ToolCallRequest.model_validate(tool_call)
+            )
         if final_response is not None:
-            decision["final_response"] = final_response
-        return json.dumps(decision)
+            return LLMDecision(final_response=final_response)
+        raise ValueError("A tool call or final response is required.")

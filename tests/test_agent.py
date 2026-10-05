@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import pytest
@@ -14,8 +13,11 @@ from agent_eval.agent import (
     FakeLLM,
     InvalidLLMResponseError,
     InvalidToolArgumentsError,
+    LLMDecision,
     MaxIterationsExceededError,
     Tool,
+    ToolApprovalDeniedError,
+    ToolApprovalRequiredError,
     ToolExecutionError,
     ToolRegistry,
     UnknownToolError,
@@ -30,35 +32,34 @@ from agent_eval.agent.tools import (
 
 
 class ScriptedLLM(LLM):
-    def __init__(self, *responses: str) -> None:
+    def __init__(self, *responses: LLMDecision) -> None:
         self.responses = list(responses)
         self.messages: list[list[dict[str, str]]] = []
 
-    def generate(self, messages: list[dict[str, str]]) -> str:
+    def generate(self, messages: list[dict[str, str]]) -> LLMDecision:
         self.messages.append(messages)
         return self.responses.pop(0)
 
 
-def response(value: dict[str, Any]) -> str:
-    return json.dumps(value)
+def response(value: dict[str, Any]) -> LLMDecision:
+    return LLMDecision.model_validate(value)
 
 
 def test_fake_llm_can_return_scripted_response() -> None:
-    llm = FakeLLM(['{"final_response":"Done."}'])
+    decision = LLMDecision(final_response="Done.")
+    llm = FakeLLM([decision])
 
-    assert llm.generate([{"role": "user", "content": "anything"}]) == (
-        '{"final_response":"Done."}'
-    )
+    assert llm.generate([{"role": "user", "content": "anything"}]) == decision
 
 
 def test_fake_llm_drives_refund_workflow_deterministically() -> None:
     llm = FakeLLM()
     messages = [{"role": "user", "content": "Refund order 1234"}]
 
-    first = json.loads(llm.generate(messages))
+    first = llm.generate(messages)
     messages.extend(
         [
-            {"role": "assistant", "content": json.dumps(first)},
+            {"role": "assistant", "content": first.model_dump_json()},
             {
                 "role": "tool",
                 "name": "lookup_order",
@@ -66,10 +67,12 @@ def test_fake_llm_drives_refund_workflow_deterministically() -> None:
             },
         ]
     )
-    second = json.loads(llm.generate(messages))
+    second = llm.generate(messages)
 
-    assert first["tool_call"]["name"] == "lookup_order"
-    assert second["tool_call"]["name"] == "check_refund_eligibility"
+    assert first.tool_call is not None
+    assert first.tool_call.name == "lookup_order"
+    assert second.tool_call is not None
+    assert second.tool_call.name == "check_refund_eligibility"
 
 
 def test_lookup_order_returns_seeded_order() -> None:
@@ -146,7 +149,11 @@ def test_tool_registry_looks_up_injected_tools() -> None:
 
 
 def test_agent_runs_full_refund_workflow() -> None:
-    agent = Agent(llm=FakeLLM(), tools=create_default_tools())
+    agent = Agent(
+        llm=FakeLLM(),
+        tools=create_default_tools(),
+        approval_handler=lambda _tool_name, _arguments: True,
+    )
 
     result = agent.run("Refund order 1234")
 
@@ -244,10 +251,92 @@ def test_agent_rejects_invalid_tool_output() -> None:
 
 
 def test_agent_rejects_invalid_llm_response() -> None:
-    agent = Agent(llm=ScriptedLLM("not JSON"), tools=create_default_tools())
+    class BrokenLLM(LLM):
+        def generate(self, messages: list[dict[str, str]]) -> LLMDecision:
+            return "not structured"  # type: ignore[return-value]
 
-    with pytest.raises(InvalidLLMResponseError, match="valid JSON"):
+    agent = Agent(llm=BrokenLLM(), tools=create_default_tools())
+
+    with pytest.raises(InvalidLLMResponseError, match="LLMDecision"):
         agent.run("Do something")
+
+
+def test_refund_requires_approval_before_execution() -> None:
+    llm = ScriptedLLM(
+        response(
+            {
+                "tool_call": {
+                    "name": "refund_order",
+                    "arguments": {"order_id": "1234"},
+                }
+            }
+        )
+    )
+    agent = Agent(llm=llm, tools=create_default_tools())
+
+    with pytest.raises(ToolApprovalRequiredError, match="requires approval"):
+        agent.run("Refund order 1234")
+
+
+def test_refund_is_not_executed_when_approval_is_denied() -> None:
+    llm = ScriptedLLM(
+        response(
+            {
+                "tool_call": {
+                    "name": "refund_order",
+                    "arguments": {"order_id": "1234"},
+                }
+            }
+        )
+    )
+    agent = Agent(
+        llm=llm,
+        tools=create_default_tools(),
+        approval_handler=lambda _tool_name, _arguments: False,
+    )
+
+    with pytest.raises(ToolApprovalDeniedError, match="Approval was denied"):
+        agent.run("Refund order 1234")
+
+
+def test_final_response_is_derived_from_validated_tool_result() -> None:
+    class RefundInput(BaseModel):
+        order_id: str
+
+    class RefundOutput(BaseModel):
+        refund_status: str
+
+    refund_tool = Tool(
+        name="refund_order",
+        description="Return a pending refund status.",
+        function=lambda _arguments: RefundOutput(refund_status="pending"),
+        input_model=RefundInput,
+        output_model=RefundOutput,
+        requires_approval=True,
+        final_response_from_result=lambda result: (
+            f"Actual refund status: {result.refund_status}."
+        ),
+    )
+    llm = ScriptedLLM(
+        response(
+            {
+                "tool_call": {
+                    "name": "refund_order",
+                    "arguments": {"order_id": "1234"},
+                }
+            }
+        ),
+        response({"final_response": "Your refund has been processed."}),
+    )
+    agent = Agent(
+        llm=llm,
+        tools=[refund_tool],
+        approval_handler=lambda _tool_name, _arguments: True,
+    )
+
+    result = agent.run("Refund order 1234")
+
+    assert result.final_response == "Actual refund status: pending."
 
 
 def test_agent_enforces_maximum_iterations() -> None:

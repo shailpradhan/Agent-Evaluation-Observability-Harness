@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from pydantic import ValidationError
@@ -29,8 +29,20 @@ class ToolExecutionError(AgentError):
     """Raised when a tool raises an exception or returns invalid output."""
 
 
+class ToolApprovalRequiredError(AgentError):
+    """Raised when a tool requires approval but no approval handler is configured."""
+
+
+class ToolApprovalDeniedError(AgentError):
+    """Raised when the configured approval handler rejects a tool call."""
+
+
+class ToolApprovalError(AgentError):
+    """Raised when the approval handler fails."""
+
+
 class InvalidLLMResponseError(AgentError):
-    """Raised when an LLM response violates the agent JSON contract."""
+    """Raised when an LLM adapter violates the structured response contract."""
 
 
 class MaxIterationsExceededError(AgentError):
@@ -45,6 +57,7 @@ class Agent:
         llm: LLM,
         tools: ToolRegistry | Iterable[Tool[Any, Any]],
         max_iterations: int = 10,
+        approval_handler: Callable[[str, dict[str, Any]], bool] | None = None,
     ) -> None:
         if isinstance(max_iterations, bool) or not isinstance(max_iterations, int):
             raise TypeError("max_iterations must be an integer.")
@@ -54,6 +67,7 @@ class Agent:
         self.llm = llm
         self.tools = tools if isinstance(tools, ToolRegistry) else ToolRegistry(tools)
         self.max_iterations = max_iterations
+        self.approval_handler = approval_handler
 
     def run(self, task: str) -> AgentResult:
         """Execute a task until the LLM returns a final response or the limit hits."""
@@ -62,9 +76,9 @@ class Agent:
                 "role": "system",
                 "content": (
                     "You are an agent with access to the following tools. "
-                    "Select a tool by returning JSON "
-                    '{"tool_call":{"name":"...","arguments":{...}}}, or finish '
-                    'with JSON {"final_response":"..."}. Use exactly one action. '
+                    "Select exactly one tool call or provide a final response. "
+                    "Do not claim a side effect succeeded unless a tool result "
+                    "confirms it. "
                     "Tool definitions: "
                     + json.dumps(self.tools.describe())
                 ),
@@ -72,13 +86,18 @@ class Agent:
             {"role": "user", "content": task},
         ]
         tool_calls: list[AgentToolCall] = []
+        grounded_final_response: str | None = None
 
         for _ in range(self.max_iterations):
-            response = self.llm.generate(messages)
-            decision = self._parse_decision(response)
+            decision = self.llm.generate(messages)
+            if not isinstance(decision, LLMDecision):
+                raise InvalidLLMResponseError(
+                    "LLM.generate() must return an LLMDecision instance."
+                )
+
             if decision.final_response is not None:
                 return AgentResult(
-                    final_response=decision.final_response,
+                    final_response=grounded_final_response or decision.final_response,
                     tool_calls=tool_calls,
                 )
 
@@ -98,12 +117,41 @@ class Agent:
                     f"Invalid arguments for tool '{tool.name}': {exc}"
                 ) from exc
 
+            if tool.requires_approval:
+                if self.approval_handler is None:
+                    raise ToolApprovalRequiredError(
+                        f"Tool '{tool.name}' requires approval, but no approval "
+                        "handler was configured."
+                    )
+                try:
+                    approved = self.approval_handler(
+                        tool.name, arguments.model_dump(mode="json")
+                    )
+                except Exception as exc:
+                    raise ToolApprovalError(
+                        f"Approval handler failed for tool '{tool.name}': {exc}"
+                    ) from exc
+                if approved is not True:
+                    raise ToolApprovalDeniedError(
+                        f"Approval was denied for tool '{tool.name}'."
+                    )
+
             try:
                 result = tool.execute(arguments)
             except Exception as exc:
                 raise ToolExecutionError(
                     f"Tool '{tool.name}' failed: {exc}"
                 ) from exc
+
+            if tool.final_response_from_result is not None:
+                try:
+                    grounded_final_response = tool.final_response_from_result(result)
+                    if not grounded_final_response:
+                        raise ValueError("The result formatter returned an empty response.")
+                except Exception as exc:
+                    raise ToolExecutionError(
+                        f"Tool '{tool.name}' could not format its validated result: {exc}"
+                    ) from exc
 
             call = AgentToolCall(
                 name=tool.name,
@@ -113,7 +161,7 @@ class Agent:
             tool_calls.append(call)
             messages.extend(
                 [
-                    {"role": "assistant", "content": response},
+                    {"role": "assistant", "content": decision.model_dump_json()},
                     {
                         "role": "tool",
                         "name": tool.name,
@@ -126,13 +174,3 @@ class Agent:
             f"Agent did not produce a final response within "
             f"{self.max_iterations} iterations."
         )
-
-    @staticmethod
-    def _parse_decision(response: str) -> LLMDecision:
-        try:
-            return LLMDecision.model_validate_json(response)
-        except (ValidationError, ValueError, TypeError) as exc:
-            raise InvalidLLMResponseError(
-                "LLM response must be valid JSON containing exactly one "
-                "'tool_call' or 'final_response'."
-            ) from exc

@@ -47,6 +47,8 @@ class Tool(Generic[InputT, OutputT]):
     function: Callable[[InputT], OutputT]
     input_model: type[InputT]
     output_model: type[OutputT]
+    requires_approval: bool = False
+    final_response_from_result: Callable[[OutputT], str] | None = None
 
     def validate_arguments(self, arguments: dict[str, Any]) -> InputT:
         """Validate raw LLM arguments against this tool's input schema."""
@@ -64,6 +66,7 @@ class Tool(Generic[InputT, OutputT]):
             "description": self.description,
             "input_schema": self.input_model.model_json_schema(),
             "output_schema": self.output_model.model_json_schema(),
+            "requires_approval": self.requires_approval,
         }
 
 
@@ -146,6 +149,15 @@ def _refund_order_tool(arguments: OrderInput) -> RefundResult:
     return RefundResult.model_validate(refund_order(arguments.order_id))
 
 
+def _refund_final_response(result: RefundResult) -> str:
+    if result.refund_status == "processed":
+        return f"Your refund for order {result.order_id} has been processed."
+    return (
+        f"Your refund for order {result.order_id} has status: "
+        f"{result.refund_status}."
+    )
+
+
 def create_default_tools() -> list[Tool[Any, Any]]:
     """Create the initial deterministic order and refund tools."""
     return [
@@ -169,5 +181,7 @@ def create_default_tools() -> list[Tool[Any, Any]]:
             function=_refund_order_tool,
             input_model=OrderInput,
             output_model=RefundResult,
+            requires_approval=True,
+            final_response_from_result=_refund_final_response,
         ),
     ]

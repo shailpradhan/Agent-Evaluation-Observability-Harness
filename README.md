@@ -63,13 +63,19 @@ python -m agent_eval.agent.demo
 
 The example prints a final response and the ordered tool calls. The LLM and
 tools are injected when constructing `Agent`, so a future provider adapter can
-implement `LLM.generate(messages)` without changing the orchestration code.
-Tool inputs and outputs are validated with Pydantic models, and the LLM must
-return either a JSON `tool_call` or a JSON `final_response`.
+implement `LLM.generate(messages) -> LLMDecision` without changing the
+orchestration code. The adapter translates its provider's native tool calls and
+final text into this typed decision; the agent does not parse provider JSON.
+Tool inputs and outputs are validated with Pydantic models.
 Tool implementations receive their declared Pydantic input model and return
 their declared Pydantic output model. The sample store includes delivered order
 `1234` and cancelled order `5678`; unknown orders produce an explicit lookup
 error, and refunds for an eligible order are idempotent within the process.
+Refund processing requires an injected approval handler; the demo explicitly
+auto-approves because its refund implementation only changes in-memory demo
+state. Without an approval handler, the agent rejects protected calls. The
+refund tool also formats its final status from the validated refund result, so
+the LLM cannot override that outcome with an unsupported success claim.
 
 The agent layer intentionally does not record telemetry or persist executions.
 In the next phase, an outer adapter can observe LLM/tool boundaries and map the

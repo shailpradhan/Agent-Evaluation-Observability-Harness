@@ -4,7 +4,11 @@ from agent_eval.agent import Agent, FakeLLM, create_default_tools
 
 
 def main() -> None:
-    agent = Agent(llm=FakeLLM(), tools=create_default_tools())
+    agent = Agent(
+        llm=FakeLLM(),
+        tools=create_default_tools(),
+        approval_handler=lambda tool_name, _arguments: tool_name == "refund_order",
+    )
     result = agent.run("Refund order 1234")
 
     print("Final response:")
