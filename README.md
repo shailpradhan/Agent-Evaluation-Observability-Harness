@@ -51,6 +51,31 @@ Agent/
 
 ## Quickstart
 
+### Running the Deterministic Agent Example
+
+The first agent-layer implementation is provider-independent. `Agent` receives
+an `LLM` implementation and a collection of tools; `FakeLLM` simulates only the
+example refund flow and does not perform real reasoning or call an external API.
+
+```powershell
+python -m agent_eval.agent.demo
+```
+
+The example prints a final response and the ordered tool calls. The LLM and
+tools are injected when constructing `Agent`, so a future provider adapter can
+implement `LLM.generate(messages)` without changing the orchestration code.
+Tool inputs and outputs are validated with Pydantic models, and the LLM must
+return either a JSON `tool_call` or a JSON `final_response`.
+Tool implementations receive their declared Pydantic input model and return
+their declared Pydantic output model. The sample store includes delivered order
+`1234` and cancelled order `5678`; unknown orders produce an explicit lookup
+error, and refunds for an eligible order are idempotent within the process.
+
+The agent layer intentionally does not record telemetry or persist executions.
+In the next phase, an outer adapter can observe LLM/tool boundaries and map the
+returned `AgentResult` and call sequence into trajectory/trace data without
+making the agent depend on OpenTelemetry, storage, or the replay engine.
+
 ### Loading an Evaluation Dataset
 
 ```python
@@ -98,4 +123,3 @@ traj.record_tool_response(
 
 print(f"Trajectory recorded: {len(traj.steps)} steps, {traj.total_tokens} tokens.")
 ```
-
