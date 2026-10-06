@@ -17,11 +17,20 @@ tasks:
       - check_cancellation_policy
       - cancel_order
     rubric:
-      - "Correct order identified"
-      - "Cancellation eligibility checked"
-      - "Cancellation executed"
-      - "User receives accurate response"
+      - assertion: "Were the expected cancellation tools called in order?"
+        kind: tool_sequence
+        expected:
+          - lookup_order
+          - check_cancellation_policy
+          - cancel_order
+      - assertion: "Did cancellation occur only after eligibility was checked?"
+        kind: tool_result_contains
+        expected:
+          eligible: true
+          cancellation_status: processed
+      - assertion: "Did the final response report the cancellation outcome?"
+        kind: final_response_contains
+        expected: "cancel"
     metadata:
       difficulty: "easy"
       category: "cancellations"
-

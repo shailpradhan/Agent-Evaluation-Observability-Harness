@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from agent_eval.models.base import BaseSchema, Field
+
+
+class RubricCheck(BaseSchema):
+    """A deterministic, binary assertion that can be checked against a trace."""
+
+    assertion: str = Field(description="Atomic yes/no assertion shown in reports")
+    kind: Literal[
+        "tool_sequence",
+        "tool_result_contains",
+        "final_response_contains",
+    ] = Field(description="Trace evidence to check")
+    expected: Any = Field(description="Expected sequence, result fields, or response text")
 
 
 class Task(BaseSchema):
@@ -19,9 +31,9 @@ class Task(BaseSchema):
         default_factory=list,
         description="List of tool names expected to be called by the agent"
     )
-    rubric: List[str] = Field(
+    rubric: List[RubricCheck] = Field(
         default_factory=list,
-        description="Grading criteria for LLM-as-a-judge evaluation"
+        description="Atomic binary checks evaluated against the execution trace"
     )
     description: Optional[str] = Field(
         default=None,
@@ -40,4 +52,3 @@ class Task(BaseSchema):
             raise ValueError("Task 'prompt' must be a non-empty string.")
         # Normalize prompt stripping whitespace
         self.prompt = str(self.prompt).strip()
-

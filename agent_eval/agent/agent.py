@@ -96,8 +96,9 @@ class Agent:
                 )
 
             if decision.final_response is not None:
+                final_response = grounded_final_response or decision.final_response
                 return AgentResult(
-                    final_response=grounded_final_response or decision.final_response,
+                    final_response=final_response,
                     tool_calls=tool_calls,
                 )
 
@@ -136,12 +137,14 @@ class Agent:
                         f"Approval was denied for tool '{tool.name}'."
                     )
 
+            tool_arguments = arguments.model_dump(mode="json")
             try:
                 result = tool.execute(arguments)
             except Exception as exc:
                 raise ToolExecutionError(
                     f"Tool '{tool.name}' failed: {exc}"
                 ) from exc
+            result_data = result.model_dump(mode="json")
 
             if tool.final_response_from_result is not None:
                 try:
@@ -155,8 +158,8 @@ class Agent:
 
             call = AgentToolCall(
                 name=tool.name,
-                arguments=arguments.model_dump(mode="json"),
-                result=result.model_dump(mode="json"),
+                arguments=tool_arguments,
+                result=result_data,
             )
             tool_calls.append(call)
             messages.extend(

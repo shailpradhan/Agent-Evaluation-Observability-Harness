@@ -1194,6 +1194,13 @@ Score
 
  Get one complete evaluation working before adding complexity.
 
+ The initial vertical slice is implemented with the seeded refund task:
+
+ - Evaluation-layer wrappers record LLM turns, tool calls/results, latency, and the final response as a trajectory; the core agent remains independent of trajectory models.
+ - Replay reuses the recorded LLM decisions and tool outputs without calling the original tools.
+ - A deterministic judge checks the task's atomic binary rubric assertions against the replayed trajectory.
+ - The pipeline returns a per-task `EvalResult`; persistence and external LLM judging remain future work.
+
  ### Phase 3 — Persistence
 
  Add:

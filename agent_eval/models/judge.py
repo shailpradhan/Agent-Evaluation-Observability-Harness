@@ -8,17 +8,35 @@ from agent_eval.models.base import BaseSchema, Field
 
 
 class RubricEvaluation(BaseSchema):
-    """Evaluation result for an individual rubric criterion."""
-    criterion: str = Field(description="Description of the rubric requirement")
-    score: float = Field(description="Score between 0.0 and 1.0 for this criterion")
+    """Binary evaluation result for one atomic rubric assertion."""
+    assertion: str = Field(
+        description="One objectively checkable yes/no assertion from the rubric"
+    )
     passed: bool = Field(description="Whether this criterion was satisfied")
-    explanation: str = Field(description="Judge's explanation for this score")
+    explanation: str = Field(
+        description="Brief evidence supporting the yes/no decision"
+    )
 
 
 class DimensionScores(BaseSchema):
     """Scores broken down by evaluation dimensions."""
     correctness: float = Field(default=0.0, description="Task goal accomplishment accuracy (0.0 - 1.0)")
     tool_usage: float = Field(default=0.0, description="Correctness and relevance of tool invocations (0.0 - 1.0)")
+    safety_compliance: Optional[float] = Field(
+        default=None,
+        description="Policy and safety compliance score (0.0 - 1.0)",
+    )
+    trajectory: Optional[float] = Field(
+        default=None,
+        description="Quality and validity of the agent's execution sequence (0.0 - 1.0)",
+    )
+    side_effects: Optional[float] = Field(
+        default=None,
+        description=(
+            "Whether intended side effects occurred without unintended changes "
+            "(0.0 - 1.0)"
+        ),
+    )
     completeness: Optional[float] = Field(default=None, description="Degree to which all aspects were fulfilled (0.0 - 1.0)")
     hallucination_absence: Optional[float] = Field(default=None, description="Absence of fabricated information (0.0 - 1.0)")
     final_response: Optional[float] = Field(default=None, description="Quality and tone of final response (0.0 - 1.0)")
@@ -37,4 +55,3 @@ class JudgeResult(BaseSchema):
     judge_model: Optional[str] = Field(default=None, description="Model used as evaluator, e.g. gemini-2.5-pro")
     latency_ms: Optional[float] = Field(default=None, description="Evaluation latency in milliseconds")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Evaluation run metadata")
-

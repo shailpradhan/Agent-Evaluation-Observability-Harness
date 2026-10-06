@@ -17,8 +17,9 @@ Foundation 1 sets up the core data contracts, schema definitions, and directory 
 1. **Project Structure**: Modular package layout supporting agent definitions, OpenTelemetry instrumentation, task corpus management, trajectory replay, LLM judge, and metrics persistence.
 2. **Data Models (`agent_eval.models`)**:
    - `Trajectory`, `TrajectoryStep`, `ToolCall`, `ToolResponse`, `LLMCall`: Full agent execution recording.
-   - `JudgeResult`, `RubricEvaluation`, `DimensionScores`: Structured LLM-as-a-judge scoring and rubric assessment.
-   - `EvalRun`, `EvalResult`, `RegressionReport`: Run metrics, pass rates, latency/token metrics, and regression detection.
+   - `JudgeResult`, `RubricEvaluation`, `DimensionScores`: Structured judge results with each rubric item evaluated as one atomic yes/no assertion; aggregate scores remain separate.
+   - `EvalRun`, `EvalResult`, `RegressionReport`: Run metrics, pass rates, latency/token metrics, and regression detection. Results include optional safety/compliance, resolution, and side-effect outcomes plus tool/turn counts; run aggregates include p50 latency and per-task efficiency/cost fields.
+   - `DimensionScores`: Includes trajectory quality, safety/compliance, and side-effect scores. Tool-use scoring was already represented by `tool_usage`.
    - `MockToolEntry`, `ReplaySession`: Deterministic tool replay records.
 3. **Task Schema (`agent_eval.schema`)**:
    - `Task`: Standard evaluation task specification (`id`, `prompt`, `expected_outcome`, `expected_tools`, `rubric`, `metadata`).
@@ -81,6 +82,20 @@ The agent layer intentionally does not record telemetry or persist executions.
 In the next phase, an outer adapter can observe LLM/tool boundaries and map the
 returned `AgentResult` and call sequence into trajectory/trace data without
 making the agent depend on OpenTelemetry, storage, or the replay engine.
+
+### Running One Complete Phase 2 Evaluation
+
+Run the refund example end to end:
+
+```powershell
+python -m agent_eval.evaluation.demo
+```
+
+This executes one dataset task, captures its trajectory, replays its recorded
+LLM decisions and tool results without calling the original tools, evaluates
+the replay against the task's binary rubric, and returns an `EvalResult` score.
+The demo uses the deterministic `FakeLLM`; it requires no API key or external
+service.
 
 ### Loading an Evaluation Dataset
 

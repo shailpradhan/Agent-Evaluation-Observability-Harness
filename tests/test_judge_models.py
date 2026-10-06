@@ -12,29 +12,51 @@ from agent_eval.models.judge import (
 class TestJudgeModels(unittest.TestCase):
     def test_rubric_evaluation(self):
         item = RubricEvaluation(
-            criterion="Correct order identified",
-            score=1.0,
+            assertion="Did the agent identify order #1234?",
             passed=True,
-            explanation="The agent extracted order #1234 correctly."
+            explanation="The lookup_order call used order_id 1234.",
         )
-        self.assertEqual(item.score, 1.0)
+        self.assertEqual(item.assertion, "Did the agent identify order #1234?")
         self.assertTrue(item.passed)
+
+    def test_rubric_evaluation_is_binary(self):
+        item = RubricEvaluation(
+            assertion="Did the agent call lookup_order before refund_order?",
+            passed=False,
+            explanation="refund_order appeared before lookup_order.",
+        )
+
+        self.assertFalse(item.passed)
+        self.assertFalse(hasattr(item, "score"))
 
     def test_dimension_scores(self):
         dims = DimensionScores(
             correctness=0.95,
             tool_usage=0.90,
+            safety_compliance=1.0,
+            trajectory=0.9,
+            side_effects=1.0,
             completeness=0.85,
             hallucination_absence=1.0,
             final_response=0.88
         )
         self.assertEqual(dims.correctness, 0.95)
         self.assertEqual(dims.hallucination_absence, 1.0)
+        self.assertEqual(dims.trajectory, 0.9)
+        self.assertEqual(dims.side_effects, 1.0)
 
     def test_judge_result(self):
         rubric_evals = [
-            RubricEvaluation(criterion="Order identified", score=1.0, passed=True, explanation="OK"),
-            RubricEvaluation(criterion="Refund executed", score=0.9, passed=True, explanation="Refund API called"),
+            RubricEvaluation(
+                assertion="Did the agent identify the requested order?",
+                passed=True,
+                explanation="The correct order ID was used.",
+            ),
+            RubricEvaluation(
+                assertion="Did the agent execute the refund?",
+                passed=True,
+                explanation="The refund tool returned a processed status.",
+            ),
         ]
         result = JudgeResult(
             task_id="refund_order_1234",
@@ -60,4 +82,3 @@ class TestJudgeModels(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

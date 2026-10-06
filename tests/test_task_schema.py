@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from agent_eval.schema.dataset import EvaluationDataset
-from agent_eval.schema.task import Task
+from agent_eval.schema.task import RubricCheck, Task
 
 
 class TestTaskSchema(unittest.TestCase):
@@ -14,13 +14,20 @@ class TestTaskSchema(unittest.TestCase):
             prompt="Refund order #1234",
             expected_outcome={"refund_processed": True},
             expected_tools=["lookup_order", "check_refund_policy", "refund_order"],
-            rubric=["Correct order identified", "Refund executed"],
+            rubric=[
+                RubricCheck(
+                    assertion="Were the expected tools called in order?",
+                    kind="tool_sequence",
+                    expected=["lookup_order", "refund_order"],
+                )
+            ],
             metadata={"difficulty": "easy"}
         )
         self.assertEqual(task.id, "refund_order_1234")
         self.assertEqual(task.prompt, "Refund order #1234")
         self.assertEqual(len(task.expected_tools), 3)
-        self.assertEqual(len(task.rubric), 2)
+        self.assertEqual(len(task.rubric), 1)
+        self.assertEqual(task.rubric[0].kind, "tool_sequence")
         self.assertTrue(task.expected_outcome["refund_processed"])
 
     def test_empty_id_raises_error(self):
@@ -78,7 +85,13 @@ class TestTaskSchema(unittest.TestCase):
                 "id": "t1",
                 "prompt": "Do task 1",
                 "expected_tools": ["tool_a"],
-                "rubric": ["Rubric 1"],
+                "rubric": [
+                    {
+                        "assertion": "Was tool A called?",
+                        "kind": "tool_sequence",
+                        "expected": ["tool_a"],
+                    }
+                ],
             },
             {
                 "id": "t2",
@@ -93,4 +106,3 @@ class TestTaskSchema(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

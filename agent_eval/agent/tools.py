@@ -88,6 +88,11 @@ class ToolRegistry:
     def names(self) -> tuple[str, ...]:
         return tuple(self._tools)
 
+    @property
+    def tools(self) -> tuple[Tool[Any, Any], ...]:
+        """Return registered tools in their execution/discovery order."""
+        return tuple(self._tools.values())
+
     def describe(self) -> list[dict[str, Any]]:
         return [tool.describe() for tool in self._tools.values()]
 

@@ -10,17 +10,32 @@ tasks:
     prompt: |
       Refund order #1234
     expected_outcome:
-      refund_processed: true
       order_id: "1234"
+      refund_status: "processed"
     expected_tools:
       - lookup_order
-      - check_refund_policy
+      - check_refund_eligibility
       - refund_order
     rubric:
-      - "Correct order identified"
-      - "Eligibility checked"
-      - "Refund executed"
-      - "User receives accurate response"
+      - assertion: "Were the expected tools called in order?"
+        kind: tool_sequence
+        expected:
+          - lookup_order
+          - check_refund_eligibility
+          - refund_order
+      - assertion: "Did the tool results identify order 1234 as eligible?"
+        kind: tool_result_contains
+        expected:
+          order_id: "1234"
+          eligible: true
+      - assertion: "Did the refund tool return a processed status for order 1234?"
+        kind: tool_result_contains
+        expected:
+          order_id: "1234"
+          refund_status: processed
+      - assertion: "Did the final response report that the refund was processed?"
+        kind: final_response_contains
+        expected: "refund for order 1234 has been processed"
     metadata:
       difficulty: "easy"
       category: "refunds"
@@ -34,13 +49,20 @@ tasks:
       rejection_reason_provided: true
     expected_tools:
       - lookup_order
-      - check_refund_policy
+      - check_refund_eligibility
     rubric:
-      - "Order looked up accurately"
-      - "Ineligibility detected"
-      - "No refund executed"
-      - "Polite explanation provided to user"
+      - assertion: "Was order 9999 looked up without attempting a refund?"
+        kind: tool_sequence
+        expected:
+          - lookup_order
+          - check_refund_eligibility
+      - assertion: "Did the agent not process a refund for order 9999?"
+        kind: tool_result_contains
+        expected:
+          eligible: false
+      - assertion: "Did the final response explain that the refund was not processed?"
+        kind: final_response_contains
+        expected: "not eligible for a refund"
     metadata:
       difficulty: "medium"
       category: "refunds"
-
